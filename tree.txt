@@ -1,0 +1,42 @@
+reactnativeproject
+¦§¦¡chatbot_app
+¦¢  ¦¢  .gitignore
+¦¢  ¦¢  app.json
+¦¢  ¦¢  App.tsx
+¦¢  ¦¢  AuthContext.tsx
+¦¢  ¦¢  babel.config.js
+¦¢  ¦¢  ChatDetailScreen.tsx
+¦¢  ¦¢  config.ts
+¦¢  ¦¢  HistoryScreen.tsx
+¦¢  ¦¢  HomeScreen.tsx
+¦¢  ¦¢  LoginScreen.tsx
+¦¢  ¦¢  package-lock.json
+¦¢  ¦¢  package.json
+¦¢  ¦¢  ProfileScreen.tsx
+¦¢  ¦¢  RegisterScreen.tsx
+¦¢  ¦¢  tsconfig.json
+¦¢  ¦¢  
+¦¢  ¦§¦¡.expo
+¦¢  ¦¢      devices.json
+¦¢  ¦¢      README.md
+¦¢  ¦¢      
+¦¢  ¦¦¦¡assets
+¦¢          adaptive-icon.png
+¦¢          favicon.png
+¦¢          icon.png
+¦¢          splash.png
+¦¢          
+¦¦¦¡flask-server
+    ¦¢  app.py
+    ¦¢  config.py
+    ¦¢  few_shot_prompts.json
+    ¦¢  generate_secret_key.py
+    ¦¢  model.py
+    ¦¢  package-lock.json
+    ¦¢  package.json
+    ¦¢  utils.py
+    ¦¢  
+    ¦¦¦¡vectorstore.faiss
+            index.faiss
+            index.pkl
+            

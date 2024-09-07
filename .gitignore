@@ -1,0 +1,8 @@
+flask-server/config.py
+chatbot_app/.expo
+chatbot_app/%ProgramData%
+flask-server/__pycache__
+flask-server/.vscode
+flask-server/.idea
+flask-server/.git
+flask-server/venv
