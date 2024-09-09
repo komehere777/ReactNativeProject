@@ -1,5 +1,6 @@
 flask-server/config.py
 chatbot_app/.expo
+chatbot_app/config.ts
 chatbot_app/%ProgramData%
 flask-server/__pycache__
 flask-server/.vscode
