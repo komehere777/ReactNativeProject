@@ -220,22 +220,3 @@ def delete_chat(history_id):
   result = collection.delete_chat(history_id)
 
   return result.deleted_count > 0
-
-def get_user_by_id(user_id):
-    users = Users(mongo_connection.db)
-    user_data = users.get_user_by_id(user_id)
-    if user_data:
-        return User(str(user_data["_id"]), user_data["username"], user_data["email"])
-    return None
-
-def get_user_data(user_id):
-  users = Users(mongo_connection.db)
-  user = users.get_user_by_id(user_id)
-  if user:
-    return {
-      "id": str(user["_id"]),
-      "username": user["username"],
-      "email": user["email"]
-    }
-  
-  return None

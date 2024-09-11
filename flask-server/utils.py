@@ -58,7 +58,7 @@ def get_ai_response(user_input, chat_history):
         few_shot_prompts = json.load(f)
 
     # LangSmith Hub에서 Prompt 가져오는 부분
-    hub_prompt_template = hub.pull("kdt-team3/kdt-team3")
+    hub_prompt_template = hub.pull("kdt/kdt-3team")
 
     # 컨텍스트를 가져오는 부분
     context = get_relevant_sections(user_input)
@@ -88,4 +88,8 @@ def get_ai_response(user_input, chat_history):
 
     response = llm(formatted_prompt)
 
-    return response.content, user_input
+    # 질문 및 응답에서 \n이 있으면 <br>로 변환
+    ai = response.content.replace("\n", "<br>")
+    user = user_input.replace("\n", "<br>")
+
+    return ai, user

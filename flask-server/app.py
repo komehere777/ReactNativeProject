@@ -1,160 +1,202 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-from model import get_user_chat_historys, get_user_chat, delete_chat, add_chat, update_chat, create_user, authenticate_user, get_user_data, delete_user
-from utils import get_ai_response
+from flask import (
+    Flask,
+    render_template,
+    request,
+    jsonify,
+    session,
+    redirect,
+    url_for,
+    flash,
+)
+from flask_login import (
+    LoginManager,
+    login_user,
+    login_required,
+    logout_user,
+    current_user,
+)
+from utils import *
 from config import SECRET_KEY
+from model import (
+    get_user_chat_historys,
+    get_user_chat,
+    User,
+    create_user,
+    authenticate_user,
+    update_user_profile,
+    delete_user,
+    delete_chat,
+)
+from bson import ObjectId
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired, Email
+import logging
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
-app.config['JWT_SECRET_KEY'] = SECRET_KEY
-jwt = JWTManager(app)
 
-@app.route('/home')
-def home():
-    return jsonify({"message": "Welcome to the Chat App API!"})
+app.secret_key = SECRET_KEY
+app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_PERMANENT"] = True
 
-@app.route('/history')
-@jwt_required()
-def get_history():
-    try:
-        current_user_id = get_jwt_identity()  # JWT에서 사용자 ID 추출
-        print(f"Fetching data for user ID: {current_user_id}")  # 디버그 로그 추가
-        user_data = get_user_data(current_user_id)
-        if user_data:
-            print(f"User found: {user_data['username']}")  # 디버그 로그 추가
-            history = get_user_chat_historys(user_data['username'])
-            print(f"Sending history data: {history}")  # 로그 추가
-            return jsonify({"chat_history": history})
-        else:
-            print(f"User not found for ID: {current_user_id}")  # 디버그 로그 추가
-            return jsonify({"error": "User not found"}), 404
-    except Exception as e:
-        print(f"Error in get_history: {str(e)}")  # 에러 로그 추가
-        print(f"Error type: {type(e).__name__}")  # 에러 타입 추가
-        print(f"Error details: {e.args}")  # 에러 상세 정보 추가
-        return jsonify({"error": "Internal server error"}), 500
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.session_protection = "strong"
 
-@app.route('/history/<int:history_id>')
-def get_chat(history_id):
-    chat = get_user_chat(history_id)
-    return jsonify({"chat": chat})
+class LoginForm(FlaskForm):
+    email = StringField("Email", validators=[DataRequired(), Email()])
+    password = PasswordField("Password", validators=[DataRequired()])
+    submit = SubmitField("Log In")
 
-@app.route('/delete_chat/<int:history_id>', methods=['DELETE'])
-def delete_chat_data(history_id):
-    result = delete_chat(history_id)
-    return jsonify({"success": result})
+class UserProfileForm(FlaskForm):
+    username = StringField("Username", validators=[DataRequired()])
+    email = StringField("Email", validators=[DataRequired(), Email()])
+    submit = SubmitField("Update Profile")
 
-@app.route('/get_response', methods=['POST'])
-@jwt_required()
-def get_response():
-    user_input = request.json.get("message")
-    history_id = request.json.get("history_id")
-    current_user_id = get_jwt_identity()  # JWT를 통해 사용자 ID 가져오기
-    user = get_user_data(current_user_id)
+# 로깅 설정
+logging.basicConfig(level=logging.DEBUG)
 
-    if not user:
-        return jsonify({"error": "User not found"}), 404
+@login_manager.user_loader
+def load_user(user_id):
+    print(f"Attempting to load user with id: {user_id}")  # 디버그 출력
+    user = User.get(user_id)
+    session['username'] = user.username if user else ''
+    print(f"Loading user: {user}")  # 디버그 출력
+    return User.get(ObjectId(user_id))
 
-    username = user['username']
+@app.route('/')
+@login_required
+def chat():
+    # 채팅 히스토리와 ID 초기화
+    session['chat_history'] = ''
+    session['history_id'] = ''
 
-    # AI로부터 유저 질문에 대한 답변을 받는 부분
-    ai_response, user = get_ai_response(user_input, "")  # 채팅 히스토리 관리 필요
+    # 로그인 된 유저의 채팅 내역 가져오는 부분
+    history = get_user_chat_historys(current_user.username)
 
-    if history_id:
-        # 기존 대화 업데이트
-        update_chat(int(history_id), user_input, ai_response)
-    else:
-        # 새 대화 시작
-        history_id = add_chat(username, user_input, ai_response)
-    
-    return jsonify({
-        "response": ai_response,
-        "history_id": history_id
-    })
+    return render_template('chat.html', history = history, user = current_user)
 
-@app.route('/register', methods=['POST'])
-def register():
-    try:
-        data = request.json
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-        
-        if not all([username, email, password]):
-            return jsonify({"success": False, "message": "Missing required fields"}), 400
-        
-        user = create_user(username, email, password)
-        if user:
-            return jsonify({"success": True, "message": "User registered successfully"}), 201
-        else:
-            return jsonify({"success": False, "message": "Username or email already exists"}), 400
-    except Exception as e:
-        print(f"Error in register: {str(e)}")
-        return jsonify({"error": "Registration failed"}), 500
+@app.route("/check_auth")
+def check_auth():
+    return jsonify({"authenticated": current_user.is_authenticated})
 
-@app.route('/login', methods=['POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    try:
-        data = request.json
-        email = data.get('email')
-        password = data.get('password')
-        
-        if not all([email, password]):
-            return jsonify({"success": False, "message": "Missing email or password"}), 400
-        
+    form = LoginForm()
+    if form.validate_on_submit():
+        email = form.email.data
+        password = form.password.data
         user = authenticate_user(email, password)
         if user:
-            access_token = create_access_token(identity=str(user.id))
-            return jsonify({
-                "success": True, 
-                "access_token": access_token,
-                "user_id": str(user.id), 
-                "username": user.username
-            }), 200
+            login_user(user)
+            session["user_id"] = str(user.id)
+            print(f"User {user.id} logged in successfully.")  # 디버그 출력
+            return redirect(url_for("chat"))
         else:
-            return jsonify({"success": False, "message": "Invalid email or password"}), 401
-    except Exception as e:
-        print(f"Error in login: {str(e)}")
-        return jsonify({"error": "Login failed"}), 500
+            print("Authentication failed.")  # 디버그 출력
+    return render_template("login.html", form=form)
 
-@app.route('/protected', methods=['GET'])
-@jwt_required()
-def protected():
-    current_user_id = get_jwt_identity()
-    return jsonify(logged_in_as=current_user_id), 200
+@app.route("/logout")
+@login_required
+def logout():
+    print(f"User {current_user.id} is logging out.")  # 디버그 출력
+    logout_user()
+    session.clear()
+    return redirect(url_for("login"))
 
-@app.route('/user')
-@jwt_required()
-def get_user():
-    try:
-        current_user_id = get_jwt_identity()
-        user = get_user_data(current_user_id)
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username")
+        email = request.form.get("email")
+        password = request.form.get("password")
+        user = create_user(username, email, password)
         if user:
-            return jsonify(user)
+            login_user(user)
+            print(f"User {user.id} registered and logged in.")  # 디버그 출력
+            return redirect(url_for("login"))
         else:
-            return jsonify({"error": "User not found"}), 404
-    except Exception as e:
-        app.logger.error(f"Error in get_user: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
+            flash("already user exists")
+            print("User registration failed: already exists.")  # 디버그 출력
+    return render_template("register.html")
+
+@app.route('/get_response', methods=['POST'])
+def get_response():
     
-@app.route('/delete_account', methods=['DELETE'])
-@jwt_required()
-def delete_account():
-    try:
-        current_user_id = get_jwt_identity()
-        user = get_user_data(current_user_id)
-        if user:
-            success = delete_user(user['id'])
-            if success:
-                return jsonify({"success": True, "message": "User deleted successfully"}), 200
-            else:
-                return jsonify({"error": "Failed to delete user"}), 500
-        else:
-            return jsonify({"error": "User not found"}), 404
-    except Exception as e:
-        app.logger.error(f"Error in delete_account: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
+    # 유저가 보낸 메시지를 받음
+    user_input = request.json.get("message")
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=6000, debug=True)
+    # 채팅 내역과 ID를 세션에서 가져옵니다. 없으면 초기화
+    chat_history = session.get('chat_history', '')
+    history_id = session.get('history_id', '')
+    
+    # AI로부터 유저 질문에 대한 답변을 받는 부분
+    ai_response, user = get_ai_response(user_input, chat_history)
+
+    # 대화 내역 저장
+    chat_history = chat_history + f"\nUser: {user}\nAI: {ai_response}"
+
+    # 채팅 내역 저장
+    if history_id:
+        update_chat(history_id, user_input, ai_response)
+    else:
+        history_id = add_chat(session['username'], user_input, ai_response)
+
+    # 세션에 채팅 내역과 ID 업데이트
+    session['history_id'] = history_id
+    session['chat_history'] = chat_history
+    
+    # JSON 형태로 응답을 반환
+    return jsonify({"response": ai_response})
+
+@app.route('/history/<history_id>')
+@login_required
+def history(history_id):
+
+    # History ID를 세션에 저장
+    session['history_id'] = history_id
+
+    # 세션에서 유저이름 가져와서 채팅 내역 불러오는 부분 ( current_user 에서 가져와도 됨 )
+    history = get_user_chat_historys(session['username']) # 유저의 전체 채팅 내역 로드
+    chat = get_user_chat(history_id) # 해당 채팅만 로드
+    print(chat)
+    return render_template('history.html', history = history, chat = chat, user = current_user)
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    logging.debug(f"Accessing profile. Current user: {current_user}")
+    logging.debug(f"Is authenticated: {current_user.is_authenticated}")
+
+    form = UserProfileForm(obj=current_user)
+    if form.validate_on_submit():
+        if update_user_profile(current_user.id, form.username.data, form.email.data):
+            flash("Profile updated successfully", "success")
+            return redirect(url_for("profile"))
+        else:
+            flash("Failed to update profile", "error")
+
+    history = get_user_chat_historys(current_user.username)
+
+    return render_template("user_profile.html", form=form, history=history)
+
+@app.route('/delete_account', methods=['POST'])
+@login_required
+def delete_account():
+    # 데이터베이스에서 유저 ID 제거
+    delete_user(current_user.id)
+
+    return redirect(url_for("login"))
+
+@app.route('/delete_chat_data/<int:history_id>', methods=['POST'])
+@login_required
+def delete_chat_data(history_id):
+
+    # 데이터베이스에서 해당 ID의 채팅 history 제거
+    result = delete_chat(history_id)
+
+    return jsonify({"success": result})
+
+if __name__ == "__main__":
+    app.run('0.0.0.0', port=5001, debug=True)
